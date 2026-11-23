@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel-to-CSV Vault | Dark Portal</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- SheetJS for automatic Excel (.xlsx/.xls) to CSV conversion -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            background-color: #0f1115;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            background-color: #181b21;
+            border: 1px solid #2d333b;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        .navbar {
+            background-color: #16191f !important;
+            border-bottom: 1px solid #2d333b;
+        }
+        .table-dark {
+            --bs-table-bg: #181b21;
+            --bs-table-border-color: #2d333b;
+        }
+        /* Prevent table-responsive from clipping Bootstrap dropdown menus */
+        .table-responsive {
+            overflow: visible !important;
+        }
+        #status-toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 9999;
+            min-width: 300px;
+        }
+        .trail-box {
+            max-height: 220px;
+            overflow-y: auto;
+            background-color: #121418;
+            border: 1px solid #2d333b;
+            border-radius: 6px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- TOP NAVBAR WITH QUIT BUTTON IN RIGHT UPPER CORNER -->
+<nav class="navbar navbar-expand-lg navbar-dark px-4 py-2 mb-4">
+    <div class="container-fluid">
+        <span class="navbar-brand fw-bold text-info">CSV Data Vault</span>
+        <div class="ms-auto d-flex align-items-center gap-3">
+            <div id="user-badge-area" class="d-none d-flex align-items-center gap-2">
+                <span class="badge bg-secondary" id="nav-username"></span>
+                <span class="badge bg-primary" id="nav-level"></span>
+            </div>
+            <!-- Requirement 10: Quit Button in Upper Right Corner -->
+            <button onclick="quitApplication()" class="btn btn-danger btn-sm fw-bold px-3">Quit</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container">
+
+    <!-- LOGIN VIEW -->
+    <div id="login-view" class="row justify-content-center mt-5">
+        <div class="col-md-5 col-lg-4">
+            <div class="card p-4">
+                <h4 class="text-center mb-3 text-info">System Login</h4>
+                <div id="login-error" class="alert alert-danger py-2 small d-none"></div>
+                <form onsubmit="handleLogin(event)">
+                    <div class="mb-3">
+                        <label class="form-label small">Username</label>
+                        <input type="text" id="login-user" class="form-control" placeholder="Enter username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small">Password</label>
+                        <input type="password" id="login-pass" class="form-control" placeholder="Enter password" required>
+                    </div>
+                    <button type="submit" class="btn btn-info w-100 fw-bold">Login</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN DASHBOARD VIEW -->
+    <div id="dashboard-view" class="d-none">
+        <div class="row g-4">
+
+            <!-- LEFT / MAIN COLUMN: UPLOAD & FILE LIST -->
+            <div id="main-col" class="col-lg-12">
+
+                <!-- ADMIN ONLY: UPLOAD EXCEL/CSV & GLOBAL DOWNLOAD TOGGLE -->
+                <div id="admin-upload-panel" class="card p-3 mb-4 d-none">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center border-bottom border-secondary pb-2 mb-3 gap-2">
+                        <h5 class="text-info mb-0">Admin File Controls</h5>
+                        <!-- Requirement 9: Enable or Disable Download Button -->
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="toggle-downloads" onchange="toggleDownloadState()">
+                            <label class="form-check-label fw-bold text-warning" for="toggle-downloads" id="toggle-downloads-label">
+                                Downloads Enabled
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Requirement 2 & 4: Upload Excel (auto-converted to CSV) or CSV -->
+                    <form onsubmit="handleFileUpload(event)">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-6">
+                                <label class="form-label small">Select Excel (*.xlsx, *.xls) or *.csv File</label>
+                                <input type="file" id="file-input" accept=".xlsx,.xls,.csv" class="form-control form-control-sm" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label small">Min Database Access Level (1-10)</label>
+                                <input type="number" id="file-level" value="1" min="1" max="10" class="form-control form-control-sm" required>
+                            </div>
+                            <div class="col-md-3">
+                                <button type="submit" class="btn btn-success btn-sm w-100 fw-bold">Convert & Upload CSV</button>
+                            </div>
+                        </div>
+                        <div id="upload-progress-bar" class="progress mt-2 d-none" style="height: 6px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 100%"></div>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- DATABASE CSV FILES TABLE -->
+                <div class="card p-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                        <h5 class="mb-0">Stored CSV Files in Database</h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <!-- Bulk Actions Dropdown (Appears when checkboxes are selected) -->
+                            <div id="bulk-actions-dropdown" class="dropdown d-none">
+                                <button class="btn btn-outline-info btn-sm dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Bulk Actions (<span id="selected-count">0</span>)
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow">
+                                    <li>
+                                        <button class="dropdown-item text-info" type="button" onclick="downloadSelectedCSVs()">
+                                            Download Selected
+                                        </button>
+                                    </li>
+                                    <li id="bulk-delete-divider"><hr class="dropdown-divider"></li>
+                                    <li id="bulk-delete-item">
+                                        <button class="dropdown-item text-danger" type="button" onclick="deleteSelectedCSVs()">
+                                            Delete Selected
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <span id="download-disabled-banner" class="badge bg-danger d-none">Downloads Temporarily Disabled by Admin</span>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-dark table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" id="select-all-files" onchange="toggleSelectAllFiles(this)" title="Select All Files">
+                                    </th>
+                                    <th>CSV Filename</th>
+                                    <th>Required Level</th>
+                                    <th>Uploaded Date</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="files-table-body">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN (ADMIN ONLY): NOTIFICATIONS & USER MANAGEMENT -->
+            <div id="admin-side-col" class="col-lg-5 d-none">
+
+                <!-- Requirement 8: Admin Download Notification Trail -->
+                <div class="card p-3 mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="text-warning mb-0">Admin Notification Trail</h5>
+                        <button onclick="clearNotifications()" class="btn btn-outline-secondary btn-sm py-0 px-2">Clear</button>
+                    </div>
+                    <div id="notification-trail" class="trail-box small">
+                        <!-- Populated via JS -->
+                    </div>
+                </div>
+
+                <!-- Requirement 1: User Management (Admin Hidden) -->
+                <div class="card p-3">
+                    <h5 class="text-info mb-3">User Management</h5>
+                    <form onsubmit="handleAddUser(event)" class="row g-2 mb-3">
+                        <div class="col-4">
+                            <input type="text" id="new-username" placeholder="Username" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-3">
+                            <input type="password" id="new-password" placeholder="Password" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-2">
+                            <input type="number" id="new-level" value="1" min="1" max="10" title="Access Level" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-3">
+                            <button type="submit" class="btn btn-primary btn-sm w-100">Add User</button>
+                        </div>
+                    </form>
+
+                    <div class="table-responsive">
+                        <table class="table table-dark table-sm align-middle small mb-0">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Level</th>
+                                    <th>Reset Password</th>
+                                    <th>Del</th>
+                                </tr>
+                            </thead>
+                            <tbody id="users-table-body">
+                                <!-- Populated via JS (Admin account excluded) -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- QUIT SCREEN OVERLAY -->
+    <div id="quit-view" class="row justify-content-center mt-5 d-none">
+        <div class="col-md-5 text-center">
+            <div class="card p-5">
+                <h3 class="text-danger mb-3">Session Terminated</h3>
+                <p class="text-muted mb-4">You have safely quit the CSV Data Vault application.</p>
+                <button onclick="location.reload()" class="btn btn-outline-info">Return to Login</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Requirement 5: Upload / Download Completion Toast Indicator -->
+<div id="status-toast" class="toast align-items-center text-bg-success border-0" role="alert">
+    <div class="d-flex">
+        <div class="toast-body fw-bold" id="toast-msg">Done!</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // ==========================================
+    // 1. DATABASE INITIALIZATION (IndexedDB + LocalStorage)
+    // ==========================================
+    const DB_NAME = 'ExcelCsvVaultDB';
+    const DB_VERSION = 1;
+    let db;
+
+    function initLocalState() {
+        if (!localStorage.getItem('vault_users')) {
+            const defaultUsers = [
+                { username: 'admin', password: 'admin123', role: 'admin', level: 10 },
+                { username: 'user1', password: '123', role: 'user', level: 1 }
+            ];
+            localStorage.setItem('vault_users', JSON.stringify(defaultUsers));
+        }
+        if (localStorage.getItem('vault_downloads_enabled') === null) {
+            localStorage.setItem('vault_downloads_enabled', 'true');
+        }
+        if (!localStorage.getItem('vault_notifications')) {
+            localStorage.setItem('vault_notifications', JSON.stringify([]));
+        }
+    }
+
+    function initIndexedDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(DB_NAME, DB_VERSION);
+            request.onupgradeneeded = (e) => {
+                const database = e.target.result;
+                if (!database.objectStoreNames.contains('csv_files')) {
+                    database.createObjectStore('csv_files', { keyPath: 'id', autoIncrement: true });
+                }
+            };
+            request.onsuccess = (e) => {
+                db = e.target.result;
+                resolve(db);
+            };
+            request.onerror = (e) => reject(e);
+        });
+    }
+
+    let currentUser = null;
+
+    window.onload = async () => {
+        initLocalState();
+        await initIndexedDB();
+    };
+
+    // ==========================================
+    // 2. INDICATOR HELPER (Requirement 5)
+    // ==========================================
+    function showIndicator(message, type = 'success') {
+        const toastEl = document.getElementById('status-toast');
+        const toastMsg = document.getElementById('toast-msg');
+        toastEl.className = `toast align-items-center text-bg-${type} border-0`;
+        toastMsg.innerText = message;
+        const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+        toast.show();
+    }
+
+    // ==========================================
+    // 3. AUTHENTICATION & QUIT (Requirements 1 & 10)
+    // ==========================================
+    function handleLogin(e) {
+        e.preventDefault();
+        const uInput = document.getElementById('login-user').value.trim();
+        const pInput = document.getElementById('login-pass').value;
+        const users = JSON.parse(localStorage.getItem('vault_users'));
+
+        const found = users.find(u => u.username === uInput && u.password === pInput);
+        if (!found) {
+            const errBox = document.getElementById('login-error');
+            errBox.innerText = 'Invalid username or password.';
+            errBox.classList.remove('d-none');
+            return;
+        }
+
+        currentUser = found;
+        document.getElementById('login-error').classList.add('d-none');
+        document.getElementById('login-view').classList.add('d-none');
+        document.getElementById('dashboard-view').classList.remove('d-none');
+        document.getElementById('user-badge-area').classList.remove('d-none');
+
+        document.getElementById('nav-username').innerText = `User: ${currentUser.username}`;
+        document.getElementById('nav-level').innerText = `Level ${currentUser.level}`;
+
+        setupRoleUI();
+        renderDashboard();
+    }
+
+    function quitApplication() {
+        currentUser = null;
+        document.getElementById('login-view').classList.add('d-none');
+        document.getElementById('dashboard-view').classList.add('d-none');
+        document.getElementById('user-badge-area').classList.add('d-none');
+        document.getElementById('quit-view').classList.remove('d-none');
+        try { window.close(); } catch (e) {}
+    }
+
+    function setupRoleUI() {
+        const isAdmin = currentUser.role === 'admin';
+        const mainCol = document.getElementById('main-col');
+        const adminUpload = document.getElementById('admin-upload-panel');
+        const adminSide = document.getElementById('admin-side-col');
+
+        if (isAdmin) {
+            mainCol.className = 'col-lg-7';
+            adminUpload.classList.remove('d-none');
+            adminSide.classList.remove('d-none');
+
+            const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
+            document.getElementById('toggle-downloads').checked = dlEnabled;
+            document.getElementById('toggle-downloads-label').innerText = dlEnabled ? 'Downloads Enabled' : 'Downloads Disabled';
+        } else {
+            mainCol.className = 'col-lg-12';
+            adminUpload.classList.add('d-none');
+            adminSide.classList.add('d-none');
+        }
+    }
+
+    // ==========================================
+    // 4. EXCEL TO CSV CONVERSION & UPLOAD (Req 2, 4, 5)
+    // ==========================================
+    function handleFileUpload(e) {
+        e.preventDefault();
+        if (currentUser.role !== 'admin') return;
+
+        const fileInput = document.getElementById('file-input');
+        const reqLevel = parseInt(document.getElementById('file-level').value, 10);
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const progressBar = document.getElementById('upload-progress-bar');
+        progressBar.classList.remove('d-none');
+
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            try {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const csvContent = XLSX.utils.sheet_to_csv(worksheet);
+
+                const baseName = file.name.replace(/\.[^/.]+$/, "");
+                const csvFilename = `${baseName}.csv`;
+
+                const tx = db.transaction(['csv_files'], 'readwrite');
+                const store = tx.objectStore('csv_files');
+                store.add({
+                    filename: csvFilename,
+                    content: csvContent,
+                    requiredLevel: reqLevel,
+                    uploadedAt: new Date().toLocaleString()
+                });
+
+                tx.oncomplete = () => {
+                    progressBar.classList.add('d-none');
+                    fileInput.value = '';
+                    showIndicator(`Upload Done! Converted & saved "${csvFilename}" to database.`, 'success');
+                    renderFilesTable();
+                };
+            } catch (err) {
+                progressBar.classList.add('d-none');
+                showIndicator('Error converting file. Ensure it is a valid Excel or CSV file.', 'danger');
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // ==========================================
+    // 5. DOWNLOAD, DELETE & BULK DROPDOWN ACTIONS
+    // ==========================================
+    function toggleDownloadState() {
+        const isChecked = document.getElementById('toggle-downloads').checked;
+        localStorage.setItem('vault_downloads_enabled', isChecked ? 'true' : 'false');
+        document.getElementById('toggle-downloads-label').innerText = isChecked ? 'Downloads Enabled' : 'Downloads Disabled';
+        showIndicator(`Download buttons are now ${isChecked ? 'ENABLED' : 'DISABLED'}.`, 'info');
+        renderFilesTable();
+    }
+
+    function downloadCSV(fileId, silent = false) {
+        const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
+        if (!dlEnabled && currentUser.role !== 'admin') {
+            showIndicator('Downloads are currently disabled by the Admin.', 'danger');
+            return;
+        }
+
+        const tx = db.transaction(['csv_files'], 'readonly');
+        const store = tx.objectStore('csv_files');
+        const req = store.get(fileId);
+
+        req.onsuccess = () => {
+            const fileRecord = req.result;
+            if (!fileRecord) return;
+
+            const blob = new Blob([fileRecord.content], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileRecord.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            if (!silent) {
+                showIndicator(`Download Done: "${fileRecord.filename}"`, 'success');
+            }
+            addNotification(`User "${currentUser.username}" downloaded "${fileRecord.filename}"`);
+        };
+    }
+
+    function deleteCSV(fileId) {
+        if (currentUser.role !== 'admin') return;
+        if (!confirm('Delete this CSV file from the database?')) return;
+
+        const tx = db.transaction(['csv_files'], 'readwrite');
+        tx.objectStore('csv_files').delete(fileId);
+        tx.oncomplete = () => {
+            showIndicator('CSV file deleted from database.', 'warning');
+            renderFilesTable();
+        };
+    }
+
+    function toggleSelectAllFiles(masterCheckbox) {
+        document.querySelectorAll('.file-checkbox').forEach(cb => {
+            cb.checked = masterCheckbox.checked;
+        });
+        updateBulkActionsUI();
+    }
+
+    function updateBulkActionsUI() {
+        const allBoxes = document.querySelectorAll('.file-checkbox');
+        const selected = document.querySelectorAll('.file-checkbox:checked');
+        const dropdownWrapper = document.getElementById('bulk-actions-dropdown');
+        const countSpan = document.getElementById('selected-count');
+        const selectAllEl = document.getElementById('select-all-files');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+
+        if (selectAllEl) {
+            selectAllEl.checked = allBoxes.length > 0 && selected.length === allBoxes.length;
+        }
+
+        // Only show "Delete Selected" option inside Bulk Actions dropdown for Admin
+        document.getElementById('bulk-delete-divider').classList.toggle('d-none', !isAdmin);
+        document.getElementById('bulk-delete-item').classList.toggle('d-none', !isAdmin);
+
+        if (selected.length > 0) {
+            countSpan.innerText = selected.length;
+            dropdownWrapper.classList.remove('d-none');
+        } else {
+            dropdownWrapper.classList.add('d-none');
+        }
+    }
+
+    function downloadSelectedCSVs() {
+        const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
+        if (!dlEnabled && currentUser.role !== 'admin') {
+            showIndicator('Downloads are currently disabled by the Admin.', 'danger');
+            return;
+        }
+
+        const selected = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => Number(cb.value));
+        if (selected.length === 0) return;
+
+        selected.forEach((id, index) => {
+            setTimeout(() => {
+                downloadCSV(id, true);
+            }, index * 250);
+        });
+
+        showIndicator(`Downloading ${selected.length} selected CSV file(s)...`, 'success');
+    }
+
+    function deleteSelectedCSVs() {
+        if (currentUser.role !== 'admin') return;
+        const selected = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => Number(cb.value));
+        if (selected.length === 0) return;
+
+        if (!confirm(`Delete ${selected.length} selected CSV file(s) from the database?`)) return;
+
+        const tx = db.transaction(['csv_files'], 'readwrite');
+        const store = tx.objectStore('csv_files');
+        selected.forEach(id => store.delete(id));
+
+        tx.oncomplete = () => {
+            showIndicator(`Deleted ${selected.length} CSV file(s) from database.`, 'warning');
+            renderFilesTable();
+        };
+    }
+
+    function addNotification(message) {
+        const notes = JSON.parse(localStorage.getItem('vault_notifications') || '[]');
+        notes.unshift({
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            date: new Date().toLocaleDateString(),
+            text: message
+        });
+        localStorage.setItem('vault_notifications', JSON.stringify(notes));
+        if (currentUser.role === 'admin') renderNotifications();
+    }
+
+    function clearNotifications() {
+        localStorage.setItem('vault_notifications', JSON.stringify([]));
+        renderNotifications();
+    }
+
+    // ==========================================
+    // 6. USER MANAGEMENT (Req 1: Admin Hidden)
+    // ==========================================
+    function handleAddUser(e) {
+        e.preventDefault();
+        const username = document.getElementById('new-username').value.trim();
+        const password = document.getElementById('new-password').value;
+        const level = parseInt(document.getElementById('new-level').value, 10);
+
+        if (username.toLowerCase() === 'admin') {
+            showIndicator('Cannot create another admin account.', 'danger');
+            return;
+        }
+
+        const users = JSON.parse(localStorage.getItem('vault_users'));
+        if (users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+            showIndicator('Username already exists.', 'danger');
+            return;
+        }
+
+        users.push({ username, password, role: 'user', level });
+        localStorage.setItem('vault_users', JSON.stringify(users));
+
+        document.getElementById('new-username').value = '';
+        document.getElementById('new-password').value = '';
+        showIndicator(`User "${username}" added at Level ${level}.`, 'success');
+        renderUsersTable();
+    }
+
+    function updateUserLevel(username) {
+        const newLvl = parseInt(document.getElementById(`lvl-${username}`).value, 10);
+        const users = JSON.parse(localStorage.getItem('vault_users'));
+        const target = users.find(u => u.username === username);
+        if (target && target.role !== 'admin') {
+            target.level = newLvl;
+            localStorage.setItem('vault_users', JSON.stringify(users));
+            showIndicator(`Updated "${username}" to Level ${newLvl}.`, 'info');
+        }
+    }
+
+    function resetUserPassword(username) {
+        const newPass = document.getElementById(`pw-${username}`).value;
+        if (!newPass) {
+            showIndicator('Enter a new password first.', 'warning');
+            return;
+        }
+        const users = JSON.parse(localStorage.getItem('vault_users'));
+        const target = users.find(u => u.username === username);
+        if (target && target.role !== 'admin') {
+            target.password = newPass;
+            localStorage.setItem('vault_users', JSON.stringify(users));
+            document.getElementById(`pw-${username}`).value = '';
+            showIndicator(`Password reset for "${username}".`, 'success');
+        }
+    }
+
+    function deleteUser(username) {
+        if (!confirm(`Delete user "${username}"?`)) return;
+        let users = JSON.parse(localStorage.getItem('vault_users'));
+        users = users.filter(u => u.username !== username || u.role === 'admin');
+        localStorage.setItem('vault_users', JSON.stringify(users));
+        showIndicator(`User "${username}" deleted.`, 'warning');
+        renderUsersTable();
+    }
+
+    // ==========================================
+    // 7. RENDERING VIEWS
+    // ==========================================
+    function renderDashboard() {
+        renderFilesTable();
+        if (currentUser.role === 'admin') {
+            renderUsersTable();
+            renderNotifications();
+        }
+    }
+
+    function renderFilesTable() {
+        const tbody = document.getElementById('files-table-body');
+        const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
+        const banner = document.getElementById('download-disabled-banner');
+        const isAdmin = currentUser.role === 'admin';
+
+        document.getElementById('select-all-files').checked = false;
+        updateBulkActionsUI();
+
+        banner.classList.toggle('d-none', dlEnabled);
+
+        const tx = db.transaction(['csv_files'], 'readonly');
+        const req = tx.objectStore('csv_files').getAll();
+
+        req.onsuccess = () => {
+            const allFiles = req.result;
+            const visibleFiles = isAdmin
+                ? allFiles
+                : allFiles.filter(f => f.requiredLevel <= currentUser.level);
+
+            if (visibleFiles.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">No CSV files available for your access level.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = visibleFiles.reverse().map(f => {
+                const isDownloadDisabled = (!dlEnabled && !isAdmin);
+                const deleteOption = isAdmin
+                    ? `<li><hr class="dropdown-divider"></li>
+                       <li><button class="dropdown-item text-danger" type="button" onclick="deleteCSV(${f.id})">Delete</button></li>`
+                    : '';
+
+                return `
+                    <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input file-checkbox" value="${f.id}" onchange="updateBulkActionsUI()">
+                        </td>
+                        <td class="fw-semibold text-light">${f.filename}</td>
+                        <td><span class="badge bg-secondary">Level ${f.requiredLevel}+</span></td>
+                        <td class="small text-muted">${f.uploadedAt}</td>
+                        <td class="text-end">
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-info dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Actions
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow">
+                                    <li>
+                                        <button class="dropdown-item ${isDownloadDisabled ? 'disabled text-muted' : 'text-info'}" type="button" onclick="downloadCSV(${f.id})" ${isDownloadDisabled ? 'disabled' : ''}>
+                                            Download CSV
+                                        </button>
+                                    </li>
+                                    ${deleteOption}
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        };
+    }
+
+    function renderUsersTable() {
+        const tbody = document.getElementById('users-table-body');
+        const users = JSON.parse(localStorage.getItem('vault_users'));
+
+        // Requirement 1: Do NOT display the admin account
+        const nonAdminUsers = users.filter(u => u.role !== 'admin');
+
+        if (nonAdminUsers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">No standard users added yet.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = nonAdminUsers.map(u => `
+            <tr>
+                <td class="fw-bold">${u.username}</td>
+                <td>
+                    <div class="d-flex">
+                        <input type="number" id="lvl-${u.username}" value="${u.level}" min="1" max="10" class="form-control form-control-sm p-1" style="width:45px">
+                        <button onclick="updateUserLevel('${u.username}')" class="btn btn-sm btn-outline-secondary ms-1 px-1" title="Save Level">✓</button>
+                    </div>
+                </td>
+                <td>
+                    <div class="d-flex">
+                        <input type="password" id="pw-${u.username}" placeholder="New PW" class="form-control form-control-sm p-1" style="width:70px">
+                        <button onclick="resetUserPassword('${u.username}')" class="btn btn-sm btn-outline-warning ms-1 px-1">Set</button>
+                    </div>
+                </td>
+                <td>
+                    <button onclick="deleteUser('${u.username}')" class="btn btn-sm btn-outline-danger px-2">X</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderNotifications() {
+        const box = document.getElementById('notification-trail');
+        const notes = JSON.parse(localStorage.getItem('vault_notifications') || '[]');
+
+        if (notes.length === 0) {
+            box.innerHTML = `<div class="text-muted text-center py-2">No user downloads recorded yet.</div>`;
+            return;
+        }
+
+        box.innerHTML = notes.map(n => `
+            <div class="border-bottom border-secondary py-1">
+                <span class="text-info">[${n.date} ${n.time}]</span> ${n.text}
+            </div>
+        `).join('');
+    }
+</script>
+</body>
+</html>
