@@ -27,6 +27,10 @@
             --bs-table-bg: #181b21;
             --bs-table-border-color: #2d333b;
         }
+        /* Prevent table-responsive from clipping Bootstrap dropdown menus */
+        .table-responsive {
+            overflow: visible !important;
+        }
         #status-toast {
             position: fixed;
             bottom: 24px;
@@ -80,7 +84,6 @@
                     </div>
                     <button type="submit" class="btn btn-info w-100 fw-bold">Login</button>
                 </form>
-               
             </div>
         </div>
     </div>
@@ -128,14 +131,40 @@
 
                 <!-- DATABASE CSV FILES TABLE -->
                 <div class="card p-3">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                         <h5 class="mb-0">Stored CSV Files in Database</h5>
-                        <span id="download-disabled-banner" class="badge bg-danger d-none">Downloads Temporarily Disabled by Admin</span>
+                        <div class="d-flex align-items-center gap-2">
+                            <!-- Bulk Actions Dropdown (Appears when checkboxes are selected) -->
+                            <div id="bulk-actions-dropdown" class="dropdown d-none">
+                                <button class="btn btn-outline-info btn-sm dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Bulk Actions (<span id="selected-count">0</span>)
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow">
+                                    <li>
+                                        <button class="dropdown-item text-info" type="button" onclick="downloadSelectedCSVs()">
+                                            Download Selected
+                                        </button>
+                                    </li>
+                                    <li id="bulk-delete-divider"><hr class="dropdown-divider"></li>
+                                    <li id="bulk-delete-item">
+                                        <button class="dropdown-item text-danger" type="button" onclick="deleteSelectedCSVs()">
+                                            Delete Selected
+                                        </button>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <span id="download-disabled-banner" class="badge bg-danger d-none">Downloads Temporarily Disabled by Admin</span>
+                        </div>
                     </div>
+
                     <div class="table-responsive">
                         <table class="table table-dark table-hover align-middle mb-0">
                             <thead>
                                 <tr>
+                                    <th style="width: 40px;">
+                                        <input type="checkbox" class="form-check-input" id="select-all-files" onchange="toggleSelectAllFiles(this)" title="Select All Files">
+                                    </th>
                                     <th>CSV Filename</th>
                                     <th>Required Level</th>
                                     <th>Uploaded Date</th>
@@ -233,7 +262,6 @@
     const DB_VERSION = 1;
     let db;
 
-    // Initialize default users & settings if not present
     function initLocalState() {
         if (!localStorage.getItem('vault_users')) {
             const defaultUsers = [
@@ -250,7 +278,6 @@
         }
     }
 
-    // Open IndexedDB for storing CSV file contents
     function initIndexedDB() {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -366,19 +393,14 @@
         reader.onload = function(evt) {
             try {
                 const data = new Uint8Array(evt.target.result);
-                // Read Excel or CSV workbook using SheetJS
                 const workbook = XLSX.read(data, { type: 'array' });
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
-
-                // Automatically convert to CSV string
                 const csvContent = XLSX.utils.sheet_to_csv(worksheet);
 
-                // Ensure filename ends with .csv
                 const baseName = file.name.replace(/\.[^/.]+$/, "");
                 const csvFilename = `${baseName}.csv`;
 
-                // Store in IndexedDB
                 const tx = db.transaction(['csv_files'], 'readwrite');
                 const store = tx.objectStore('csv_files');
                 store.add({
@@ -403,7 +425,7 @@
     }
 
     // ==========================================
-    // 5. DOWNLOAD, DELETE & TOGGLE (Req 3, 5, 6, 8, 9)
+    // 5. DOWNLOAD, DELETE & BULK DROPDOWN ACTIONS
     // ==========================================
     function toggleDownloadState() {
         const isChecked = document.getElementById('toggle-downloads').checked;
@@ -413,7 +435,7 @@
         renderFilesTable();
     }
 
-    function downloadCSV(fileId) {
+    function downloadCSV(fileId, silent = false) {
         const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
         if (!dlEnabled && currentUser.role !== 'admin') {
             showIndicator('Downloads are currently disabled by the Admin.', 'danger');
@@ -428,7 +450,6 @@
             const fileRecord = req.result;
             if (!fileRecord) return;
 
-            // Trigger browser download
             const blob = new Blob([fileRecord.content], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -439,10 +460,9 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            // Requirement 5: Download Complete Indicator
-            showIndicator(`Download Done: "${fileRecord.filename}"`, 'success');
-
-            // Requirement 8: Log notification trail for Admin
+            if (!silent) {
+                showIndicator(`Download Done: "${fileRecord.filename}"`, 'success');
+            }
             addNotification(`User "${currentUser.username}" downloaded "${fileRecord.filename}"`);
         };
     }
@@ -455,6 +475,73 @@
         tx.objectStore('csv_files').delete(fileId);
         tx.oncomplete = () => {
             showIndicator('CSV file deleted from database.', 'warning');
+            renderFilesTable();
+        };
+    }
+
+    function toggleSelectAllFiles(masterCheckbox) {
+        document.querySelectorAll('.file-checkbox').forEach(cb => {
+            cb.checked = masterCheckbox.checked;
+        });
+        updateBulkActionsUI();
+    }
+
+    function updateBulkActionsUI() {
+        const allBoxes = document.querySelectorAll('.file-checkbox');
+        const selected = document.querySelectorAll('.file-checkbox:checked');
+        const dropdownWrapper = document.getElementById('bulk-actions-dropdown');
+        const countSpan = document.getElementById('selected-count');
+        const selectAllEl = document.getElementById('select-all-files');
+        const isAdmin = currentUser && currentUser.role === 'admin';
+
+        if (selectAllEl) {
+            selectAllEl.checked = allBoxes.length > 0 && selected.length === allBoxes.length;
+        }
+
+        // Only show "Delete Selected" option inside Bulk Actions dropdown for Admin
+        document.getElementById('bulk-delete-divider').classList.toggle('d-none', !isAdmin);
+        document.getElementById('bulk-delete-item').classList.toggle('d-none', !isAdmin);
+
+        if (selected.length > 0) {
+            countSpan.innerText = selected.length;
+            dropdownWrapper.classList.remove('d-none');
+        } else {
+            dropdownWrapper.classList.add('d-none');
+        }
+    }
+
+    function downloadSelectedCSVs() {
+        const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
+        if (!dlEnabled && currentUser.role !== 'admin') {
+            showIndicator('Downloads are currently disabled by the Admin.', 'danger');
+            return;
+        }
+
+        const selected = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => Number(cb.value));
+        if (selected.length === 0) return;
+
+        selected.forEach((id, index) => {
+            setTimeout(() => {
+                downloadCSV(id, true);
+            }, index * 250);
+        });
+
+        showIndicator(`Downloading ${selected.length} selected CSV file(s)...`, 'success');
+    }
+
+    function deleteSelectedCSVs() {
+        if (currentUser.role !== 'admin') return;
+        const selected = Array.from(document.querySelectorAll('.file-checkbox:checked')).map(cb => Number(cb.value));
+        if (selected.length === 0) return;
+
+        if (!confirm(`Delete ${selected.length} selected CSV file(s) from the database?`)) return;
+
+        const tx = db.transaction(['csv_files'], 'readwrite');
+        const store = tx.objectStore('csv_files');
+        selected.forEach(id => store.delete(id));
+
+        tx.oncomplete = () => {
+            showIndicator(`Deleted ${selected.length} CSV file(s) from database.`, 'warning');
             renderFilesTable();
         };
     }
@@ -555,44 +642,56 @@
         const tbody = document.getElementById('files-table-body');
         const dlEnabled = localStorage.getItem('vault_downloads_enabled') === 'true';
         const banner = document.getElementById('download-disabled-banner');
+        const isAdmin = currentUser.role === 'admin';
 
-        if (!dlEnabled) {
-            banner.classList.remove('d-none');
-        } else {
-            banner.classList.add('d-none');
-        }
+        document.getElementById('select-all-files').checked = false;
+        updateBulkActionsUI();
+
+        banner.classList.toggle('d-none', dlEnabled);
 
         const tx = db.transaction(['csv_files'], 'readonly');
         const req = tx.objectStore('csv_files').getAll();
 
         req.onsuccess = () => {
             const allFiles = req.result;
-            // Filter by user's access level (admin sees all)
-            const visibleFiles = currentUser.role === 'admin'
+            const visibleFiles = isAdmin
                 ? allFiles
                 : allFiles.filter(f => f.requiredLevel <= currentUser.level);
 
             if (visibleFiles.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-3">No CSV files available for your access level.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-3">No CSV files available for your access level.</td></tr>`;
                 return;
             }
 
             tbody.innerHTML = visibleFiles.reverse().map(f => {
-                const disableAttr = (!dlEnabled && currentUser.role !== 'admin') ? 'disabled' : '';
-                const deleteBtn = currentUser.role === 'admin'
-                    ? `<button onclick="deleteCSV(${f.id})" class="btn btn-sm btn-outline-danger ms-1">Delete</button>`
+                const isDownloadDisabled = (!dlEnabled && !isAdmin);
+                const deleteOption = isAdmin
+                    ? `<li><hr class="dropdown-divider"></li>
+                       <li><button class="dropdown-item text-danger" type="button" onclick="deleteCSV(${f.id})">Delete</button></li>`
                     : '';
 
                 return `
                     <tr>
+                        <td>
+                            <input type="checkbox" class="form-check-input file-checkbox" value="${f.id}" onchange="updateBulkActionsUI()">
+                        </td>
                         <td class="fw-semibold text-light">${f.filename}</td>
                         <td><span class="badge bg-secondary">Level ${f.requiredLevel}+</span></td>
                         <td class="small text-muted">${f.uploadedAt}</td>
                         <td class="text-end">
-                            <button onclick="downloadCSV(${f.id})" class="btn btn-sm btn-info fw-bold" ${disableAttr}>
-                                Download CSV
-                            </button>
-                            ${deleteBtn}
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-info dropdown-toggle fw-bold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Actions
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow">
+                                    <li>
+                                        <button class="dropdown-item ${isDownloadDisabled ? 'disabled text-muted' : 'text-info'}" type="button" onclick="downloadCSV(${f.id})" ${isDownloadDisabled ? 'disabled' : ''}>
+                                            Download CSV
+                                        </button>
+                                    </li>
+                                    ${deleteOption}
+                                </ul>
+                            </div>
                         </td>
                     </tr>
                 `;
