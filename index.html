@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Excel-to-CSV Vault | Cloud Portal</title>
+    <title>Cloud Portal</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- SheetJS for automatic Excel (.xlsx/.xls) to CSV conversion -->
@@ -46,26 +46,30 @@
             padding: 10px;
         }
         .perm-pill {
-            font-size: 0.7rem;
+            font-size: 0.72rem;
             user-select: none;
+        }
+        .user-droplist-menu {
+            max-height: 240px;
+            overflow-y: auto;
+            min-width: 220px;
         }
     </style>
 </head>
 <body>
 
-<!-- TOP NAVBAR WITH QUIT BUTTON IN RIGHT UPPER CORNER -->
-<nav class="navbar navbar-expand-lg navbar-dark px-4 py-2 mb-4">
-    <div class="container-fluid">
-        <div class="d-flex align-items-center gap-2">
-            <span class="navbar-brand fw-bold text-info mb-0">CSV Data Vault</span>
+<!-- TOP NAVBAR WITH CLOUD BADGE ON FAR LEFT & QUIT BUTTON ON RIGHT -->
+<nav class="navbar navbar-expand-lg navbar-dark px-2 py-2 mb-4">
+    <div class="container-fluid ps-0">
+        <div class="d-flex align-items-center">
             <span id="cloud-status-badge" class="badge bg-warning text-dark">Connecting to Cloud...</span>
         </div>
         <div class="ms-auto d-flex align-items-center gap-3">
             <div id="user-badge-area" class="d-none d-flex align-items-center gap-2">
                 <span class="badge bg-secondary" id="nav-username"></span>
-                <span class="badge bg-primary" id="nav-level"></span>
+                <span class="badge bg-primary" id="nav-role"></span>
             </div>
-            <!-- Requirement 10: Quit Button in Upper Right Corner -->
+            <!-- Quit Button in Upper Right Corner -->
             <button onclick="quitApplication()" class="btn btn-danger btn-sm fw-bold px-3">Quit</button>
         </div>
     </div>
@@ -105,7 +109,6 @@
                 <div id="file-controls-panel" class="card p-3 mb-4 d-none">
                     <div id="admin-global-controls" class="d-flex flex-wrap justify-content-between align-items-center border-bottom border-secondary pb-2 mb-3 gap-2 d-none">
                         <h5 class="text-info mb-0">Admin File Controls</h5>
-                        <!-- Requirement 9: Enable or Disable Download Button -->
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" role="switch" id="toggle-downloads" onchange="toggleDownloadState()">
                             <label class="form-check-label fw-bold text-warning" for="toggle-downloads" id="toggle-downloads-label">
@@ -114,18 +117,25 @@
                         </div>
                     </div>
 
-                    <!-- Requirement 2 & 4: Upload Excel (auto-converted to CSV) or CSV -->
+                    <!-- Upload Excel (auto-converted to CSV) or CSV with User Droplist -->
                     <div id="upload-form-wrapper" class="d-none">
                         <h6 class="text-success mb-2">Upload Excel / CSV to Database</h6>
                         <form onsubmit="handleFileUpload(event)">
                             <div class="row g-2 align-items-end">
-                                <div class="col-md-6">
+                                <div class="col-md-5">
                                     <label class="form-label small">Select Excel (*.xlsx, *.xls) or *.csv File</label>
                                     <input type="file" id="file-input" accept=".xlsx,.xls,.csv" class="form-control form-control-sm" required>
                                 </div>
-                                <div class="col-md-3">
-                                    <label class="form-label small">Min Database Access Level (1-10)</label>
-                                    <input type="number" id="file-level" value="1" min="1" max="10" class="form-control form-control-sm" required>
+                                <div class="col-md-4">
+                                    <label class="form-label small">Allowed Users to Download</label>
+                                    <div class="dropdown">
+                                        <button id="user-droplist-btn" class="btn btn-outline-info btn-sm dropdown-toggle w-100 text-start text-truncate" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                            Select Users...
+                                        </button>
+                                        <div id="upload-user-droplist" class="dropdown-menu dropdown-menu-dark p-2 shadow user-droplist-menu w-100">
+                                            <!-- Populated dynamically with users -->
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="col-md-3">
                                     <button type="submit" class="btn btn-success btn-sm w-100 fw-bold">Convert & Upload CSV</button>
@@ -175,7 +185,7 @@
                                         <input type="checkbox" class="form-check-input" id="select-all-files" onchange="toggleSelectAllFiles(this)" title="Select All Files">
                                     </th>
                                     <th>CSV Filename</th>
-                                    <th>Required Level</th>
+                                    <th>Allowed Users</th>
                                     <th>Uploaded Date</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
@@ -191,7 +201,7 @@
             <!-- RIGHT COLUMN (ADMIN ONLY): NOTIFICATIONS & USER MANAGEMENT -->
             <div id="admin-side-col" class="col-lg-5 d-none">
 
-                <!-- Requirement 8: Admin Download Notification Trail -->
+                <!-- Admin Download Notification Trail -->
                 <div class="card p-3 mb-4">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="text-warning mb-0">Admin Notification Trail</h5>
@@ -202,19 +212,16 @@
                     </div>
                 </div>
 
-                <!-- Requirement 1: User Management with Per-User Permissions (Admin Hidden) -->
+                <!-- User Management with Per-User Permissions -->
                 <div class="card p-3">
                     <h5 class="text-info mb-3">User Management & Function Access</h5>
                     <form onsubmit="handleAddUser(event)" class="mb-3">
                         <div class="row g-2 mb-2">
-                            <div class="col-5">
+                            <div class="col-6">
                                 <input type="text" id="new-username" placeholder="Username" class="form-control form-control-sm" required>
                             </div>
-                            <div class="col-4">
+                            <div class="col-6">
                                 <input type="password" id="new-password" placeholder="Password" class="form-control form-control-sm" required>
-                            </div>
-                            <div class="col-3">
-                                <input type="number" id="new-level" value="1" min="1" max="10" title="Access Level (1-10)" class="form-control form-control-sm" required>
                             </div>
                         </div>
                         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 bg-dark p-2 rounded border border-secondary">
@@ -241,7 +248,6 @@
                             <thead>
                                 <tr>
                                     <th>User</th>
-                                    <th>Level</th>
                                     <th>Functions (U / DL / B / Del)</th>
                                     <th>Reset PW</th>
                                     <th>Del</th>
@@ -263,7 +269,7 @@
         <div class="col-md-5 text-center">
             <div class="card p-5">
                 <h3 class="text-danger mb-3">Session Terminated</h3>
-                <p class="text-muted mb-4">You have safely quit the CSV Data Vault application.</p>
+                <p class="text-muted mb-4">You have safely quit the application.</p>
                 <button onclick="location.reload()" class="btn btn-outline-info">Return to Login</button>
             </div>
         </div>
@@ -271,7 +277,7 @@
 
 </div>
 
-<!-- Requirement 5: Upload / Download Completion Toast Indicator -->
+<!-- Upload / Download Completion Toast Indicator -->
 <div id="status-toast" class="toast align-items-center text-bg-success border-0" role="alert">
     <div class="d-flex">
         <div class="toast-body fw-bold" id="toast-msg">Done!</div>
@@ -360,14 +366,12 @@
                     username: "admin",
                     password: "admin123",
                     role: "admin",
-                    level: 10,
                     permissions: { canUpload: true, canDownload: true, canBulk: true, canDelete: true }
                 });
                 await setDoc(doc(db, "users", "user1"), {
                     username: "user1",
                     password: "123",
                     role: "user",
-                    level: 1,
                     permissions: { canUpload: false, canDownload: true, canBulk: false, canDelete: false }
                 });
             }
@@ -394,7 +398,7 @@
     initCloudDefaults();
 
     // ==========================================
-    // 2. INDICATOR HELPER (Requirement 5)
+    // 2. INDICATOR HELPER
     // ==========================================
     function showIndicator(message, type = 'success') {
         const toastEl = document.getElementById('status-toast');
@@ -406,7 +410,7 @@
     }
 
     // ==========================================
-    // 3. AUTHENTICATION & QUIT (Requirements 1 & 10)
+    // 3. AUTHENTICATION & QUIT
     // ==========================================
     window.handleLogin = async function(e) {
         e.preventDefault();
@@ -429,7 +433,7 @@
             document.getElementById('user-badge-area').classList.remove('d-none');
 
             document.getElementById('nav-username').innerText = `User: ${currentUser.username}`;
-            document.getElementById('nav-level').innerText = `Level ${currentUser.level}`;
+            document.getElementById('nav-role').innerText = currentUser.role === 'admin' ? 'Admin' : 'Standard User';
 
             setupRoleUI();
             startRealtimeListeners();
@@ -499,13 +503,16 @@
         });
         unsubscribers.push(unsubFiles);
 
-        if (currentUser.role === 'admin') {
-            const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
-                cachedUsers = snapshot.docs.map(d => d.data());
+        const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+            cachedUsers = snapshot.docs.map(d => d.data());
+            renderUploadUserDroplist();
+            if (currentUser && currentUser.role === 'admin') {
                 renderUsersTable();
-            });
-            unsubscribers.push(unsubUsers);
+            }
+        });
+        unsubscribers.push(unsubUsers);
 
+        if (currentUser.role === 'admin') {
             const notesQuery = query(collection(db, "notifications"), orderBy("createdAt", "desc"));
             const unsubNotes = onSnapshot(notesQuery, (snapshot) => {
                 const notes = snapshot.docs.map(d => d.data());
@@ -513,11 +520,9 @@
             });
             unsubscribers.push(unsubNotes);
         } else {
-            // Keep current user's live permissions & level synced in real time
             const unsubSelf = onSnapshot(doc(db, "users", currentUser.username), (docSnap) => {
                 if (docSnap.exists()) {
                     currentUser = docSnap.data();
-                    document.getElementById('nav-level').innerText = `Level ${currentUser.level}`;
                     setupRoleUI();
                     renderFilesTable();
                 }
@@ -527,8 +532,79 @@
     }
 
     // ==========================================
-    // 5. EXCEL TO CSV CONVERSION & CLOUD UPLOAD
+    // 5. USER DROPLIST & EXCEL TO CSV UPLOAD
     // ==========================================
+    function renderUploadUserDroplist() {
+        const menu = document.getElementById('upload-user-droplist');
+        if (!menu) return;
+
+        const prevAll = document.getElementById('droplist-all-users')?.checked || false;
+        const prevSelected = new Set(
+            Array.from(document.querySelectorAll('.droplist-user-cb:checked')).map(cb => cb.value)
+        );
+
+        const standardUsers = cachedUsers
+            .filter(u => u.role !== 'admin')
+            .sort((a, b) => a.username.localeCompare(b.username));
+
+        if (standardUsers.length === 0) {
+            menu.innerHTML = `<div class="small text-muted px-2 py-1">No users available. Add users first.</div>`;
+            updateUserDroplistLabel();
+            return;
+        }
+
+        const userCheckboxes = standardUsers.map(u => `
+            <label class="dropdown-item rounded d-flex align-items-center gap-2 py-1 small" style="cursor:pointer;">
+                <input type="checkbox" class="form-check-input mt-0 droplist-user-cb" value="${u.username}" ${prevSelected.has(u.username) ? 'checked' : ''} onchange="handleDroplistUserChange()">
+                <span>${u.username}</span>
+            </label>
+        `).join('');
+
+        menu.innerHTML = `
+            <label class="dropdown-item rounded d-flex align-items-center gap-2 py-1 small fw-bold text-info" style="cursor:pointer;">
+                <input type="checkbox" class="form-check-input mt-0" id="droplist-all-users" ${prevAll ? 'checked' : ''} onchange="toggleDroplistAllUsers(this)">
+                <span>All Users</span>
+            </label>
+            <hr class="dropdown-divider my-1">
+            ${userCheckboxes}
+        `;
+        updateUserDroplistLabel();
+    }
+
+    window.toggleDroplistAllUsers = function(allCb) {
+        document.querySelectorAll('.droplist-user-cb').forEach(cb => {
+            cb.checked = allCb.checked;
+        });
+        updateUserDroplistLabel();
+    };
+
+    window.handleDroplistUserChange = function() {
+        const allBoxes = document.querySelectorAll('.droplist-user-cb');
+        const checkedBoxes = document.querySelectorAll('.droplist-user-cb:checked');
+        const allCb = document.getElementById('droplist-all-users');
+        if (allCb) {
+            allCb.checked = allBoxes.length > 0 && checkedBoxes.length === allBoxes.length;
+        }
+        updateUserDroplistLabel();
+    };
+
+    function updateUserDroplistLabel() {
+        const btn = document.getElementById('user-droplist-btn');
+        if (!btn) return;
+        const allCb = document.getElementById('droplist-all-users');
+        const selected = Array.from(document.querySelectorAll('.droplist-user-cb:checked')).map(cb => cb.value);
+
+        if (allCb && allCb.checked) {
+            btn.innerText = 'All Users';
+        } else if (selected.length === 0) {
+            btn.innerText = 'Select Users...';
+        } else if (selected.length <= 2) {
+            btn.innerText = selected.join(', ');
+        } else {
+            btn.innerText = `${selected.length} users selected`;
+        }
+    }
+
     window.handleFileUpload = function(e) {
         e.preventDefault();
         if (!hasPerm('canUpload')) {
@@ -537,9 +613,20 @@
         }
 
         const fileInput = document.getElementById('file-input');
-        const reqLevel = parseInt(document.getElementById('file-level').value, 10);
         const file = fileInput.files[0];
         if (!file) return;
+
+        const isAllUsers = document.getElementById('droplist-all-users')?.checked || false;
+        const selectedUsers = Array.from(document.querySelectorAll('.droplist-user-cb:checked')).map(cb => cb.value);
+
+        if (!isAllUsers && selectedUsers.length === 0) {
+            showIndicator('Please select at least one user from the Allowed Users droplist.', 'warning');
+            return;
+        }
+
+        if (currentUser.role !== 'admin' && !isAllUsers && !selectedUsers.includes(currentUser.username)) {
+            selectedUsers.push(currentUser.username);
+        }
 
         const progressBar = document.getElementById('upload-progress-bar');
         progressBar.classList.remove('d-none');
@@ -565,7 +652,8 @@
                 await addDoc(collection(db, "csv_files"), {
                     filename: csvFilename,
                     content: csvContent,
-                    requiredLevel: reqLevel,
+                    allowAllUsers: isAllUsers,
+                    allowedUsers: isAllUsers ? [] : selectedUsers,
                     uploadedBy: currentUser.username,
                     uploadedAt: new Date().toLocaleString(),
                     createdAt: Date.now()
@@ -573,6 +661,12 @@
 
                 progressBar.classList.add('d-none');
                 fileInput.value = '';
+                if (document.getElementById('droplist-all-users')) {
+                    document.getElementById('droplist-all-users').checked = false;
+                }
+                document.querySelectorAll('.droplist-user-cb').forEach(cb => cb.checked = false);
+                updateUserDroplistLabel();
+
                 showIndicator(`Upload Done! "${csvFilename}" is now live in the cloud.`, 'success');
             } catch (err) {
                 progressBar.classList.add('d-none');
@@ -598,6 +692,16 @@
         return downloadsEnabled;
     }
 
+    function canUserSeeFile(file) {
+        if (!currentUser) return false;
+        if (currentUser.role === 'admin') return true;
+        if (file.allowAllUsers) return true;
+        if (Array.isArray(file.allowedUsers)) {
+            return file.allowedUsers.includes(currentUser.username);
+        }
+        return false;
+    }
+
     window.downloadCSV = async function(fileId, silent = false) {
         if (!hasPerm('canDownload')) {
             showIndicator('Your account does not have download permission.', 'danger');
@@ -609,7 +713,10 @@
         }
 
         const fileRecord = cachedFiles.find(f => f.id === fileId);
-        if (!fileRecord) return;
+        if (!fileRecord || !canUserSeeFile(fileRecord)) {
+            showIndicator('You are not authorized to download this file.', 'danger');
+            return;
+        }
 
         const blob = new Blob([fileRecord.content], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -739,7 +846,6 @@
 
         const username = document.getElementById('new-username').value.trim();
         const password = document.getElementById('new-password').value;
-        const level = parseInt(document.getElementById('new-level').value, 10);
 
         const permissions = {
             canUpload: document.getElementById('new-perm-upload').checked,
@@ -763,7 +869,6 @@
             username,
             password,
             role: 'user',
-            level,
             permissions
         });
 
@@ -774,12 +879,11 @@
         document.getElementById('new-perm-bulk').checked = false;
         document.getElementById('new-perm-delete').checked = false;
 
-        showIndicator(`User "${username}" added to cloud at Level ${level}.`, 'success');
+        showIndicator(`User "${username}" added to cloud.`, 'success');
     };
 
     window.saveUserAccess = async function(username) {
         if (!currentUser || currentUser.role !== 'admin') return;
-        const newLvl = parseInt(document.getElementById(`lvl-${username}`).value, 10);
         const permissions = {
             canUpload: document.getElementById(`perm-u-${username}`).checked,
             canDownload: document.getElementById(`perm-dl-${username}`).checked,
@@ -787,11 +891,8 @@
             canDelete: document.getElementById(`perm-del-${username}`).checked
         };
 
-        await updateDoc(doc(db, "users", username), {
-            level: newLvl,
-            permissions
-        });
-        showIndicator(`Saved level & permissions for "${username}".`, 'info');
+        await updateDoc(doc(db, "users", username), { permissions });
+        showIndicator(`Saved permissions for "${username}".`, 'info');
     };
 
     window.resetUserPassword = async function(username) {
@@ -814,11 +915,22 @@
     // ==========================================
     // 8. RENDERING VIEWS
     // ==========================================
+    function formatAllowedUsersBadge(file) {
+        if (file.allowAllUsers) {
+            return `<span class="badge bg-info text-dark">All Users</span>`;
+        }
+        if (Array.isArray(file.allowedUsers) && file.allowedUsers.length > 0) {
+            return file.allowedUsers
+                .map(u => `<span class="badge bg-secondary me-1">${u}</span>`)
+                .join('');
+        }
+        return `<span class="badge bg-dark border border-secondary text-muted">Admin Only</span>`;
+    }
+
     function renderFilesTable() {
         if (!currentUser) return;
         const tbody = document.getElementById('files-table-body');
         const banner = document.getElementById('download-disabled-banner');
-        const isAdmin = currentUser.role === 'admin';
         const perms = normalizePermissions(currentUser);
         const colCount = perms.canBulk ? 5 : 4;
 
@@ -827,12 +939,10 @@
 
         banner.classList.toggle('d-none', downloadsEnabled);
 
-        const visibleFiles = isAdmin
-            ? cachedFiles
-            : cachedFiles.filter(f => f.requiredLevel <= currentUser.level);
+        const visibleFiles = cachedFiles.filter(f => canUserSeeFile(f));
 
         if (visibleFiles.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="${colCount}" class="text-center text-muted py-3">No CSV files available for your access level.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${colCount}" class="text-center text-muted py-3">No CSV files assigned to your account.</td></tr>`;
             return;
         }
 
@@ -871,7 +981,7 @@
                 <tr>
                     ${checkboxCell}
                     <td class="fw-semibold text-light">${f.filename}</td>
-                    <td><span class="badge bg-secondary">Level ${f.requiredLevel}+</span></td>
+                    <td>${formatAllowedUsersBadge(f)}</td>
                     <td class="small text-muted">${f.uploadedAt}</td>
                     <td class="text-end">${actionCell}</td>
                 </tr>
@@ -884,7 +994,7 @@
         const nonAdminUsers = cachedUsers.filter(u => u.role !== 'admin');
 
         if (nonAdminUsers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">No standard users added yet.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">No standard users added yet.</td></tr>`;
             return;
         }
 
@@ -894,15 +1004,12 @@
                 <tr>
                     <td class="fw-bold">${u.username}</td>
                     <td>
-                        <input type="number" id="lvl-${u.username}" value="${u.level}" min="1" max="10" class="form-control form-control-sm p-1" style="width:42px">
-                    </td>
-                    <td>
                         <div class="d-flex flex-wrap align-items-center gap-2 perm-pill">
                             <label title="Upload"><input type="checkbox" id="perm-u-${u.username}" ${p.canUpload ? 'checked' : ''}> U</label>
                             <label title="Download"><input type="checkbox" id="perm-dl-${u.username}" ${p.canDownload ? 'checked' : ''}> DL</label>
                             <label title="Bulk Actions"><input type="checkbox" id="perm-b-${u.username}" ${p.canBulk ? 'checked' : ''}> B</label>
                             <label title="Delete Files"><input type="checkbox" id="perm-del-${u.username}" ${p.canDelete ? 'checked' : ''}> Del</label>
-                            <button onclick="saveUserAccess('${u.username}')" class="btn btn-sm btn-outline-success py-0 px-1" title="Save Level & Permissions">✓</button>
+                            <button onclick="saveUserAccess('${u.username}')" class="btn btn-sm btn-outline-success py-0 px-1" title="Save Permissions">✓</button>
                         </div>
                     </td>
                     <td>
